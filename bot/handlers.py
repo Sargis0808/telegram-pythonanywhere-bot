@@ -1,8 +1,10 @@
 import os
+import random
 from datetime import datetime
 from bot.clients import bot, BOT_INFO, store
-from bot.config import COMMIT_SHA, HF_SPACE_ID, HOSTING_LABEL, MODEL, RATE_LIMIT
+from bot.config import COMMIT_SHA, HF_SPACE_ID, HOSTING_LABEL, MODEL, RATE_LIMIT, SYSTEM_PROMPT
 from bot.ai import ask_ai
+from bot.providers import generate
 from bot.helpers import is_allowed, keep_typing, send_reply, should_respond
 from bot.history import clear_history
 from bot.preferences import get_provider, set_provider
@@ -49,21 +51,148 @@ def _log(message, direction: str, text: str) -> None:
 def cmd_start(message):
     bot.send_message(
         message.chat.id,
-        "Hello! I'm your AI assistant. Send me a message to get started.\n\nUse /help to see available commands.",
+        "Hello brats! I'm your AI assistant.I'm football Predictior."
+        "Welcome to the ultimate Football AI Telegram Bot! ⚽ Get instant answers to any football question,"
+        " from player and team statistics to match analysis and tournament insights. Receive smart match predictions, "
+        "betting insights, lineup analysis, and detailed comparisons powered by advanced AI."
+        " Whether you're a passionate fan or a football expert, this bot is your all-in-one football assistant.\n\nUse /help to see available commands.",
     )
 
+@bot.message_handler(commands=["joke"], func = is_allowed)
+def cmd_joke(message):
+    reply = ask_ai(message.from_user.id, "Tell one short, your vibe joke.")
+    bot.send_message(message.chat.id, reply)
+
+
+@bot.message_handler(commands=["quote"], func=is_allowed)
+def cmd_quote(message):
+    reply = ask_ai(
+        message.from_user.id,
+        "Share one short, inspiring football quote. Attribute it if you can.",
+    )
+    bot.send_message(message.chat.id, reply)
+
+
+@bot.message_handler(commands=["fact"], func=is_allowed)
+def cmd_fact(message):
+    reply = ask_ai(
+        message.from_user.id,
+        "Tell me one surprising football fact in a single sentence.",
+    )
+    bot.send_message(message.chat.id, reply)
+
+
+@bot.message_handler(commands=["compliment"], func=is_allowed)
+def cmd_compliment(message):
+    reply = ask_ai(
+        message.from_user.id,
+        "Give me one short, warm compliment with a football flavour.",
+    )
+    bot.send_message(message.chat.id, reply)
+
+
+@bot.message_handler(commands=["roll"], func=is_allowed)
+def cmd_roll(message):
+    # Pure Python — no AI. Rolls a standard six-sided die.
+    result = random.randint(1, 6)
+    bot.send_message(message.chat.id, f"🎲 You rolled a {result}!")
 
 @bot.message_handler(commands=["help"], func=is_allowed)
 def cmd_help(message):
-    lines = [
-        "/start — welcome message",
-        "/help  — show this message",
-        "/reset — clear conversation history",
-        "/about — about this bot",
+    reply = _dynamic_help(message.from_user.id, message.chat.id)
+    bot.send_message(message.chat.id, reply)
+
+@bot.message_handler(commands=["roast"], func=is_allowed)
+def cmd_roast(message):
+ name = message.text.split(maxsplit=1)[1] if " " in message.text else "you"
+ reply = ask_ai(message.from_user.id, f"Write a short, playful, friendly roast of {name}.")
+ bot.send_message(message.chat.id, reply)
+
+@bot.message_handler(commands=["remember"], func=is_allowed)
+def cmd_remember(message):
+ note = message.text.split(maxsplit=1)[1] if " " in message.text else ""
+ store.set(f"note:{message.from_user.id}", note)
+ bot.send_message(message.chat.id, "Saved carrefully!")
+
+@bot.message_handler(commands=["recall"], func=is_allowed)
+def cmd_recall(message):
+ # Mirror image of /remember — reads the stored note back.
+ note = store.get(f"note:{message.from_user.id}") if store is not None else None
+ if not note:
+  bot.send_message(message.chat.id, "I don't have anything saved that you ask. Use /remember <text> first.")
+  return
+ bot.send_message(message.chat.id, f"You asked me to remember this:\n\n{note}")
+
+
+def _ask_once(user_id: int, chat_id: int, user_prompt: str) -> str:
+    """Run a single stateless AI turn (system prompt + one user message).
+
+    Unlike ask_ai(), this never reads or writes conversation history, so
+    command replies like /help and /about don't pollute the user's chat
+    memory. The typing indicator stays alive for the duration.
+    """
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ]
+    with keep_typing(chat_id):
+        return generate(user_id, messages)
+
+
+def _commands() -> list:
+    """Canonical (command, purpose) list — the single source of truth.
+
+    /model is only included when HF_SPACE_ID is configured, matching the
+    handler registration below.
+    """
+    cmds = [
+        ("/start", "welcome message"),
+        ("/help", "show this list of commands"),
+        ("/reset", "clear our conversation history"),
+        ("/about", "who I am and what's under the hood"),
+        ("/joke" , "tell jokes about football"),
+        ("/quote", "share an inspiring football quote ,and life"),
+        ("/fact", "drop a surprising football fact"),
+        ("/compliment", "get a warm football-flavoured compliment"),
+        ("/roll", "roll a six-sided die"),
+        ("/roast", "write short,playful roast"),
+        ("/remember", "save messages that you want to remember "),
+        ("/recall", "read back what I asked you to remember"),
     ]
     if HF_SPACE_ID:
-        lines.append("/model — switch AI provider")
-    bot.send_message(message.chat.id, "\n".join(lines))
+        cmds.append(("/model", "switch the AI provider powering me"))
+    return cmds
+
+
+def _fallback_help() -> str:
+    """Plain football-voiced help, used when the AI call fails."""
+    lines = ["⚽ Here's how I can help, gaffer:", ""]
+    lines += [f"{name} — {purpose}" for name, purpose in _commands()]
+    lines += ["", "Or just ask me anything — match forecasts, stats, tactics, history. 🏆"]
+    return "\n".join(lines)
+
+
+def _dynamic_help(user_id: int, chat_id: int) -> str:
+    """Render the help text in the bot's voice via a one-off AI call.
+
+    The exact command list is passed in so the AI restyles the descriptions
+    without inventing or renaming commands. No history is read or written.
+    Falls back to the static list on any error so /help never fails.
+    """
+    command_block = "\n".join(f"{name} — {purpose}" for name, purpose in _commands())
+    prompt = (
+        "Write a short Telegram /help message in your own voice. "
+        "List EXACTLY these commands with their exact names — do not add, "
+        "remove, or rename any — but you may restyle the descriptions and add "
+        "a one-line intro and outro. Keep it concise and use a couple of "
+        "football emojis.\n\n" + command_block
+    )
+    try:
+        reply = _ask_once(user_id, chat_id, prompt)
+        return reply.strip() or _fallback_help()
+    except Exception as e:
+        print(f"/help dynamic render failed: {e} — using fallback", flush=True)
+        return _fallback_help()
 
 
 @bot.message_handler(commands=["reset"], func=is_allowed)
@@ -80,7 +209,15 @@ def cmd_about(message):
     else:
         model_line = MODEL
     storage_line = "SQLite" if store is not None else "stateless (no memory)"
+
+    # Dynamic intro: ask the AI to introduce itself based on the current
+    # SYSTEM_PROMPT so /about always reflects the bot's live personality.
+    # This is a one-off call that does NOT touch conversation history.
+    intro = _dynamic_intro(message.from_user.id, message.chat.id)
+
     lines = [
+        intro,
+        "",
         f"Model  : {model_line}",
         f"Storage: {storage_line}",
         f"Hosting: {HOSTING_LABEL}",
@@ -88,6 +225,33 @@ def cmd_about(message):
     if COMMIT_SHA:
         lines.append(f"Version: {COMMIT_SHA}")
     bot.send_message(message.chat.id, "\n".join(lines))
+
+
+# Static fallback used when the AI intro call fails (network/provider error).
+_FALLBACK_INTRO = (
+    "⚽ FootyOracle — your AI football analyst. Ask me anything about the game, "
+    "or about an upcoming match for a win/draw/win forecast. 🏆📊"
+)
+
+
+def _dynamic_intro(user_id: int, chat_id: int) -> str:
+    """Generate a fresh self-introduction from the current SYSTEM_PROMPT.
+
+    Runs a single stateless AI call (no history read or write). Falls back to
+    a static blurb on any error so /about never fails. user_id selects the
+    provider preference; chat_id drives the typing indicator.
+    """
+    prompt = (
+        "Introduce yourself in 2-3 short sentences for an /about command: who you "
+        "are, what you help with, and your vibe. Use a couple of emojis. Do not "
+        "greet me or ask a question — just the introduction."
+    )
+    try:
+        reply = _ask_once(user_id, chat_id, prompt)
+        return reply.strip() or _FALLBACK_INTRO
+    except Exception as e:
+        print(f"/about dynamic intro failed: {e} — using fallback", flush=True)
+        return _FALLBACK_INTRO
 
 
 if HF_SPACE_ID:

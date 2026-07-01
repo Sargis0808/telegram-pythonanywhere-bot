@@ -115,6 +115,74 @@ def test_handle_message_mention_only_skipped():
         mock_ask.assert_not_called()
 
 
+# ── /help ─────────────────────────────────────────────────────────────────────
+
+
+def test_cmd_help_sends_dynamic_reply():
+    """/help renders the command list in the bot's voice and sends it back to
+    the requesting chat."""
+    with (
+        patch("bot.handlers.bot") as mock_bot,
+        patch("bot.handlers.HF_SPACE_ID", ""),
+        patch("bot.handlers.generate", return_value="⚽ My footy menu!") as mock_gen,
+        patch("bot.handlers.keep_typing"),
+    ):
+        from bot.handlers import cmd_help
+
+        cmd_help(make_message(user_id=123, chat_id=456))
+        mock_bot.send_message.assert_called_once_with(456, "⚽ My footy menu!")
+        # The real command names are handed to the AI so it can't invent them.
+        prompt = mock_gen.call_args[0][1][1]["content"]
+        assert "/start" in prompt and "/reset" in prompt
+        assert "/model" not in prompt  # HF disabled
+
+
+def test_cmd_help_is_history_safe():
+    """/help must NOT use ask_ai (which would write the turn into the user's
+    conversation history) — it uses a one-off stateless call instead."""
+    with (
+        patch("bot.handlers.bot"),
+        patch("bot.handlers.generate", return_value="menu"),
+        patch("bot.handlers.keep_typing"),
+        patch("bot.handlers.ask_ai") as mock_ask,
+    ):
+        from bot.handlers import cmd_help
+
+        cmd_help(make_message())
+        mock_ask.assert_not_called()
+
+
+def test_cmd_help_includes_model_command_when_hf_enabled():
+    """When HF_SPACE_ID is set, /model is part of the command list passed
+    to the AI."""
+    with (
+        patch("bot.handlers.bot"),
+        patch("bot.handlers.HF_SPACE_ID", "fake/space"),
+        patch("bot.handlers.generate", return_value="menu") as mock_gen,
+        patch("bot.handlers.keep_typing"),
+    ):
+        from bot.handlers import cmd_help
+
+        cmd_help(make_message())
+        prompt = mock_gen.call_args[0][1][1]["content"]
+        assert "/model" in prompt
+
+
+def test_cmd_help_falls_back_when_ai_fails():
+    """If the AI call raises, /help still sends the static command list."""
+    with (
+        patch("bot.handlers.bot") as mock_bot,
+        patch("bot.handlers.HF_SPACE_ID", ""),
+        patch("bot.handlers.generate", side_effect=RuntimeError("boom")),
+        patch("bot.handlers.keep_typing"),
+    ):
+        from bot.handlers import cmd_help
+
+        cmd_help(make_message())
+        sent = mock_bot.send_message.call_args[0][1]
+        assert "/start" in sent and "/about" in sent
+
+
 # ── /about ────────────────────────────────────────────────────────────────────
 
 
@@ -124,6 +192,7 @@ def test_cmd_about_with_sqlite():
         patch("bot.handlers.bot") as mock_bot,
         patch("bot.handlers.store", MagicMock()),
         patch("bot.handlers.HF_SPACE_ID", ""),
+        patch("bot.handlers._dynamic_intro", return_value="INTRO"),
     ):
         from bot.handlers import cmd_about
 
@@ -142,6 +211,7 @@ def test_cmd_about_includes_commit_sha_when_set():
         patch("bot.handlers.store", MagicMock()),
         patch("bot.handlers.HF_SPACE_ID", ""),
         patch("bot.handlers.COMMIT_SHA", "abc1234"),
+        patch("bot.handlers._dynamic_intro", return_value="INTRO"),
     ):
         from bot.handlers import cmd_about
 
@@ -158,6 +228,7 @@ def test_cmd_about_omits_version_line_when_sha_unknown():
         patch("bot.handlers.store", MagicMock()),
         patch("bot.handlers.HF_SPACE_ID", ""),
         patch("bot.handlers.COMMIT_SHA", ""),
+        patch("bot.handlers._dynamic_intro", return_value="INTRO"),
     ):
         from bot.handlers import cmd_about
 
@@ -174,12 +245,52 @@ def test_cmd_about_without_store():
         patch("bot.handlers.bot") as mock_bot,
         patch("bot.handlers.store", None),
         patch("bot.handlers.HF_SPACE_ID", ""),
+        patch("bot.handlers._dynamic_intro", return_value="INTRO"),
     ):
         from bot.handlers import cmd_about
 
         cmd_about(make_message())
         sent = mock_bot.send_message.call_args[0][1]
         assert "stateless" in sent
+
+
+def test_cmd_about_uses_dynamic_ai_intro():
+    """/about asks the AI to introduce itself and embeds the reply, without
+    touching conversation history."""
+    with (
+        patch("bot.handlers.bot") as mock_bot,
+        patch("bot.handlers.store", MagicMock()),
+        patch("bot.handlers.HF_SPACE_ID", ""),
+        patch("bot.handlers.generate", return_value="⚽ I'm FootyOracle!") as mock_gen,
+        patch("bot.handlers.keep_typing"),
+        patch("bot.handlers.ask_ai") as mock_ask,
+    ):
+        from bot.handlers import cmd_about
+
+        cmd_about(make_message())
+        sent = mock_bot.send_message.call_args[0][1]
+        assert "⚽ I'm FootyOracle!" in sent
+        # _dynamic_intro sends the system prompt as a one-off, stateless call:
+        # the system prompt is present and history (ask_ai) is never touched.
+        messages = mock_gen.call_args[0][1]
+        assert messages[0]["role"] == "system"
+        mock_ask.assert_not_called()
+
+
+def test_cmd_about_falls_back_when_ai_fails():
+    """If the AI call raises, /about still renders with the static fallback."""
+    with (
+        patch("bot.handlers.bot") as mock_bot,
+        patch("bot.handlers.store", MagicMock()),
+        patch("bot.handlers.HF_SPACE_ID", ""),
+        patch("bot.handlers.generate", side_effect=RuntimeError("boom")),
+        patch("bot.handlers.keep_typing"),
+    ):
+        from bot.handlers import cmd_about, _FALLBACK_INTRO
+
+        cmd_about(make_message())
+        sent = mock_bot.send_message.call_args[0][1]
+        assert _FALLBACK_INTRO in sent
 
 
 # ── /model command ────────────────────────────────────────────────────────────
@@ -281,6 +392,75 @@ def test_cmd_model_not_registered_without_hf_space_id():
         delattr(bot.handlers, "cmd_model")
     importlib.reload(bot.handlers)
     assert not hasattr(bot.handlers, "cmd_model")
+
+
+# ── /quote, /fact, /compliment (AI) ─────────────────────────────────────────────
+
+
+def test_cmd_quote_calls_ask_ai():
+    with (
+        patch("bot.handlers.ask_ai", return_value="Quote reply") as mock_ask,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_quote
+
+        cmd_quote(make_message(user_id=123, chat_id=456))
+        assert mock_ask.call_args[0][0] == 123
+        mock_bot.send_message.assert_called_once_with(456, "Quote reply")
+
+
+def test_cmd_fact_calls_ask_ai():
+    with (
+        patch("bot.handlers.ask_ai", return_value="Fact reply") as mock_ask,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_fact
+
+        cmd_fact(make_message(user_id=123, chat_id=456))
+        assert mock_ask.call_args[0][0] == 123
+        mock_bot.send_message.assert_called_once_with(456, "Fact reply")
+
+
+def test_cmd_compliment_calls_ask_ai():
+    with (
+        patch("bot.handlers.ask_ai", return_value="Compliment reply") as mock_ask,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_compliment
+
+        cmd_compliment(make_message(user_id=123, chat_id=456))
+        assert mock_ask.call_args[0][0] == 123
+        mock_bot.send_message.assert_called_once_with(456, "Compliment reply")
+
+
+# ── /roll (pure Python, no AI) ──────────────────────────────────────────────────
+
+
+def test_cmd_roll_uses_random_not_ai():
+    """/roll must be pure Python — never touch the AI."""
+    with (
+        patch("bot.handlers.ask_ai") as mock_ask,
+        patch("bot.handlers.random.randint", return_value=4) as mock_rand,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_roll
+
+        cmd_roll(make_message(chat_id=456))
+        mock_ask.assert_not_called()
+        mock_rand.assert_called_once_with(1, 6)
+        assert "4" in mock_bot.send_message.call_args[0][1]
+
+
+def test_cmd_roll_within_range():
+    """A real roll always lands on 1-6."""
+    with patch("bot.handlers.bot") as mock_bot:
+        from bot.handlers import cmd_roll
+
+        for _ in range(50):
+            cmd_roll(make_message(chat_id=456))
+            sent = mock_bot.send_message.call_args[0][1]
+            value = int("".join(c for c in sent if c.isdigit()))
+            assert 1 <= value <= 6
 
 
 def test_handle_message_uses_keep_typing():
