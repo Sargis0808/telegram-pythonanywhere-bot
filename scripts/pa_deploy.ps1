@@ -134,13 +134,27 @@ function Invoke-Pa {
     if (-not $NoAuth) { $headers['Authorization'] = "Token $PaToken" }
     $p = @{
         Uri = $uri; Method = $Method; Headers = $headers; TimeoutSec = $TimeoutSec
-        SkipHttpErrorCheck = $true; StatusCodeVariable = 'code'
+        SkipHttpErrorCheck = $true
     }
     if ($Form)              { $p.Form = $Body }
-    elseif ($null -ne $Body) { $p.Body = $Body }
+    elseif ($null -ne $Body) {
+        $p.Body = $Body
+        # A hashtable body needs an explicit Content-Type. Invoke-WebRequest does
+        # not reliably set one for non-POST verbs (e.g. PATCH), and PA's API then
+        # rejects the request with HTTP 415 ("Unsupported media type").
+        if ($Body -is [System.Collections.IDictionary]) {
+            $p.ContentType = 'application/x-www-form-urlencoded'
+        }
+    }
     try {
+        # Read the status off the response object rather than -StatusCodeVariable:
+        # that parameter isn't present in every PowerShell 7.x build (e.g. the
+        # scoop pwsh 7.6.x lacks it), and referencing it makes Invoke-WebRequest
+        # throw "parameter cannot be found", which this catch would then
+        # misreport as a network failure (Code = 0). $resp.StatusCode works on
+        # all 7.x when paired with -SkipHttpErrorCheck.
         $resp = Invoke-WebRequest @p
-        return [pscustomobject]@{ Code = [int]$code; Body = [string]$resp.Content }
+        return [pscustomobject]@{ Code = [int]$resp.StatusCode; Body = [string]$resp.Content }
     } catch {
         # Network-level failure (DNS, TLS, timeout) — no HTTP status.
         return [pscustomobject]@{ Code = 0; Body = [string]$_.Exception.Message }

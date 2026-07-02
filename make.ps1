@@ -147,6 +147,39 @@ function Install-Scoop {
     return (Test-RealCommand 'scoop')
 }
 
+function Install-Pwsh {
+    # Ensure PowerShell 7 (pwsh) is available; scripts\pa_deploy.ps1 genuinely
+    # needs it (Invoke-WebRequest -Form / -SkipHttpErrorCheck don't exist in
+    # Windows PowerShell 5.1). Try winget first (ships with Windows 11), then
+    # scoop as a fallback. Returns the pwsh command path, or $null if it could
+    # not be made available. Idempotent.
+    $existing = Get-Command pwsh -ErrorAction SilentlyContinue
+    if ($existing) { return $existing.Source }
+
+    if (Test-RealCommand 'winget') {
+        Write-Host "PowerShell 7 (pwsh) not found - installing via winget..." -ForegroundColor Cyan
+        try {
+            & winget install --id Microsoft.PowerShell --source winget `
+                --accept-package-agreements --accept-source-agreements --silent 2>&1 |
+                ForEach-Object { Write-Host "  $_" }
+        }
+        catch { Write-Host "  winget: $_" -ForegroundColor DarkYellow }
+        Update-SessionPath
+        $c = Get-Command pwsh -ErrorAction SilentlyContinue
+        if ($c) { return $c.Source }
+    }
+
+    Write-Host "Trying scoop to install PowerShell 7..." -ForegroundColor Cyan
+    if (Install-Scoop) {
+        Invoke-Scoop @('install', 'pwsh')
+        Update-SessionPath
+        $c = Get-Command pwsh -ErrorAction SilentlyContinue
+        if ($c) { return $c.Source }
+    }
+
+    return $null
+}
+
 function Install-Toolchain {
     # Best-effort: make sure git, gh and python are on PATH before building
     # the venv, installing any that are missing via scoop. Only bootstraps
@@ -203,12 +236,24 @@ switch ($Target.ToLower()) {
     'deploy-pa' {
         Assert-Env
         $deploy = Join-Path $RepoRoot 'scripts\pa_deploy.ps1'
-        # pa_deploy.ps1 needs PowerShell 7. If we're on 5.1 but pwsh exists, use it.
-        if ($PSVersionTable.PSVersion.Major -lt 7 -and (Get-Command pwsh -ErrorAction SilentlyContinue)) {
-            Invoke-Native { & pwsh -NoProfile -File $deploy }
-        } else {
-            # In-process .ps1 call: its own `exit <code>` propagates the failure.
+        # pa_deploy.ps1 has `#requires -Version 7.0` and genuinely uses 7-only
+        # cmdlet features, so it CANNOT run in-process on Windows PowerShell 5.1
+        # (it fails with a cryptic ScriptRequiresException). Always route through
+        # pwsh; bootstrap it (winget/scoop) if it isn't installed yet.
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            # Already on 7+: run in-process so its own `exit <code>` propagates.
             & $deploy
+        } else {
+            $pwshPath = Install-Pwsh
+            if (-not $pwshPath) {
+                Write-Host "ERROR: scripts\pa_deploy.ps1 requires PowerShell 7, which isn't installed" -ForegroundColor Red
+                Write-Host "  and could not be installed automatically." -ForegroundColor Red
+                Write-Host "  Install it manually, then re-run:" -ForegroundColor Yellow
+                Write-Host "    winget install --id Microsoft.PowerShell" -ForegroundColor Yellow
+                Write-Host "  (or 'scoop install pwsh'), open a NEW terminal, and run '.\make.ps1 deploy-pa' again." -ForegroundColor Yellow
+                exit 1
+            }
+            Invoke-Native { & $pwshPath -NoProfile -File $deploy }
         }
     }
     'claude' {
