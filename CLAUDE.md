@@ -91,6 +91,8 @@ telegram-pythonanywhere-bot/
 | `ALLOWED_USERS` | No | _open_ | Comma-separated whitelist of usernames (with/without `@`) or numeric user IDs. Empty = everyone allowed. Non-empty = silent drop for non-whitelisted (no rejection reply, no leak of bot existence). Implemented as `func=is_allowed` on every `@bot.message_handler` so telebot never dispatches the handler |
 | `HOSTING_LABEL` | No | `PythonAnywhere` | Label shown by the `/about` command |
 | `DEPLOY_SECRET` | No | — | Enables `/api/deploy` auto-deploy webhook. Fail-closed: when unset, the endpoint returns 403. Generate with `openssl rand -hex 32` and set the same value as a GitHub repo secret named `DEPLOY_SECRET` so the workflow at `.github/workflows/deploy.yml` can call the endpoint |
+| `FOOTBALL_DATA_API_KEY` | No | — | Free API token from [football-data.org](https://www.football-data.org/client/register). Enables the `/lastnews` command (today's real fixtures, kickoff times, live status/scores via `bot/football_data.py`). When unset, `/lastnews` replies with a "not set up yet" hint. `football-data.org` is on PA's outbound whitelist |
+| `FOOTBALL_TZ_OFFSET` | No | `4` | Hours to shift UTC kickoff times into the user's local timezone for `/lastnews` display. Default `4` = Armenia (UTC+4, no DST). Accepts fractions (e.g. `5.5`) |
 
 All env vars are read in `bot/config.py`. `.strip()` is called on every value to defend against trailing newlines / whitespace from copy-paste.
 

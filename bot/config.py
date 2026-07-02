@@ -105,6 +105,20 @@ HOSTING_LABEL = os.environ.get("HOSTING_LABEL", "PythonAnywhere").strip()
 # endpoint is fail-closed.
 DEPLOY_SECRET = os.environ.get("DEPLOY_SECRET", "").strip()
 
+# football-data.org — powers the /lastnews command (today's fixtures,
+# kickoff times, live status and scores). Get a free token at
+# https://www.football-data.org/client/register. When unset, /lastnews
+# tells the user the feature isn't configured yet (graceful degradation).
+FOOTBALL_DATA_API_KEY = os.environ.get("FOOTBALL_DATA_API_KEY", "").strip()
+
+# Hours to shift UTC kickoff times into the user's local timezone for
+# display. Default 4 = Armenia (UTC+4, no DST). Accepts fractions (e.g.
+# 5.5 for India). Falls back to 4 on a malformed value.
+try:
+    FOOTBALL_TZ_OFFSET = float(os.environ.get("FOOTBALL_TZ_OFFSET", "4").strip() or "4")
+except ValueError:
+    FOOTBALL_TZ_OFFSET = 4.0
+
 # App
 SYSTEM_PROMPT = (
     "You are ⚽ FootyOracle, an expert football (soccer) analyst who knows the sport "
