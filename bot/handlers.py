@@ -124,6 +124,33 @@ def cmd_recall(message):
  bot.send_message(message.chat.id, f"You asked me to remember this:\n\n{note}")
 
 
+@bot.message_handler(commands=["predict"], func=is_allowed)
+def cmd_predict(message):
+    # Core football-predictor command: the user names a fixture and the AI
+    # returns a structured forecast. Uses _ask_once (stateless) so a prediction
+    # doesn't pollute the user's conversation memory, and keeps the typing
+    # indicator alive during the (sometimes slow) generation.
+    match = message.text.split(maxsplit=1)[1].strip() if " " in message.text else ""
+    if not match:
+        bot.send_message(
+            message.chat.id,
+            "⚽ Tell me which match to forecast, e.g.\n"
+            "/predict Barcelona vs Real Madrid",
+        )
+        return
+    prompt = (
+        f"Predict this football match: {match}.\n"
+        "Reply concisely with:\n"
+        "• Most likely outcome (home win / draw / away win)\n"
+        "• A predicted scoreline\n"
+        "• 2-3 short reasons (recent form, key players, head-to-head)\n"
+        "• A confidence level: low / medium / high\n"
+        "Make clear this is an AI estimate for fun, not betting advice."
+    )
+    reply = _ask_once(message.from_user.id, message.chat.id, prompt)
+    bot.send_message(message.chat.id, reply)
+
+
 def _ask_once(user_id: int, chat_id: int, user_prompt: str) -> str:
     """Run a single stateless AI turn (system prompt + one user message).
 
@@ -150,6 +177,7 @@ def _commands() -> list:
         ("/help", "show this list of commands"),
         ("/reset", "clear our conversation history"),
         ("/about", "who I am and what's under the hood"),
+        ("/predict", "predict a match result — /predict TeamA vs TeamB"),
         ("/joke" , "tell jokes about football"),
         ("/quote", "share an inspiring football quote ,and life"),
         ("/fact", "drop a surprising football fact"),

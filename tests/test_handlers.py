@@ -463,6 +463,38 @@ def test_cmd_roll_within_range():
             assert 1 <= value <= 6
 
 
+# ── /predict (football forecast) ─────────────────────────────────────────────
+
+
+def test_cmd_predict_with_match_calls_ai():
+    """/predict <match> runs a stateless AI forecast and sends the reply."""
+    with (
+        patch("bot.handlers._ask_once", return_value="Forecast reply") as mock_ask,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_predict
+
+        cmd_predict(make_message(text="/predict Barcelona vs Real Madrid", user_id=123, chat_id=456))
+        # user_id and chat_id are forwarded to _ask_once; the fixture text is in the prompt.
+        assert mock_ask.call_args[0][0] == 123
+        assert mock_ask.call_args[0][1] == 456
+        assert "Barcelona vs Real Madrid" in mock_ask.call_args[0][2]
+        mock_bot.send_message.assert_called_once_with(456, "Forecast reply")
+
+
+def test_cmd_predict_without_match_shows_usage():
+    """/predict with no fixture must prompt for usage and never hit the AI."""
+    with (
+        patch("bot.handlers._ask_once") as mock_ask,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_predict
+
+        cmd_predict(make_message(text="/predict", chat_id=456))
+        mock_ask.assert_not_called()
+        assert "/predict" in mock_bot.send_message.call_args[0][1]
+
+
 def test_handle_message_uses_keep_typing():
     """handle_message should wrap ask_ai in the keep_typing context."""
     with (
