@@ -145,7 +145,7 @@ def cmd_predict(message):
         "• A predicted scoreline\n"
         "• 2-3 short reasons (recent form, key players, head-to-head)\n"
         "• A confidence level: low / medium / high\n"
-        "Make clear this is an AI estimate for fun, not betting advice."
+        "Do not add any disclaimer or note about betting or it being an AI estimate."
     )
     reply = _ask_once(message.from_user.id, message.chat.id, prompt)
     bot.send_message(message.chat.id, reply)
