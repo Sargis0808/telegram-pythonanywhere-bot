@@ -51,11 +51,12 @@ def _log(message, direction: str, text: str) -> None:
 def cmd_start(message):
     bot.send_message(
         message.chat.id,
-        "Hello brats! I'm your AI assistant.I'm football Predictior."
-        "Welcome to the ultimate Football AI Telegram Bot! ⚽ Get instant answers to any football question,"
-        " from player and team statistics to match analysis and tournament insights. Receive smart match predictions, "
-        "betting insights, lineup analysis, and detailed comparisons powered by advanced AI."
-        " Whether you're a passionate fan or a football expert, this bot is your all-in-one football assistant.\n\nUse /help to see available commands.",
+        "👋 Hello! I'm your AI football predictor. ⚽\n\n"
+        "🏆 Welcome to the ultimate Football AI Telegram Bot! Get instant answers to any football question — "
+        "📊 player and team stats, 🔍 match analysis, and tournament insights. Receive smart match predictions 🔮, "
+        "lineup analysis, and detailed comparisons powered by advanced AI 🤖."
+        " Whether you're a passionate fan or a football expert, this bot is your all-in-one football assistant. 🥅\n\n"
+        "👉 Use /help to see available commands.",
     )
 
 @bot.message_handler(commands=["joke"], func = is_allowed)
@@ -112,16 +113,16 @@ def cmd_roast(message):
 def cmd_remember(message):
  note = message.text.split(maxsplit=1)[1] if " " in message.text else ""
  store.set(f"note:{message.from_user.id}", note)
- bot.send_message(message.chat.id, "Saved carrefully!")
+ bot.send_message(message.chat.id, "📝 Saved carefully! ✅")
 
 @bot.message_handler(commands=["recall"], func=is_allowed)
 def cmd_recall(message):
  # Mirror image of /remember — reads the stored note back.
  note = store.get(f"note:{message.from_user.id}") if store is not None else None
  if not note:
-  bot.send_message(message.chat.id, "I don't have anything saved that you ask. Use /remember <text> first.")
+  bot.send_message(message.chat.id, "🤔 I don't have anything saved yet. Use /remember <text> first. 📝")
   return
- bot.send_message(message.chat.id, f"You asked me to remember this:\n\n{note}")
+ bot.send_message(message.chat.id, f"🧠 You asked me to remember this:\n\n{note}")
 
 
 @bot.message_handler(commands=["predict"], func=is_allowed)
@@ -173,22 +174,22 @@ def _commands() -> list:
     handler registration below.
     """
     cmds = [
-        ("/start", "welcome message"),
-        ("/help", "show this list of commands"),
-        ("/reset", "clear our conversation history"),
-        ("/about", "who I am and what's under the hood"),
-        ("/predict", "predict a match result — /predict TeamA vs TeamB"),
-        ("/joke" , "tell jokes about football"),
-        ("/quote", "share an inspiring football quote ,and life"),
-        ("/fact", "drop a surprising football fact"),
-        ("/compliment", "get a warm football-flavoured compliment"),
-        ("/roll", "roll a six-sided die"),
-        ("/roast", "write short,playful roast"),
-        ("/remember", "save messages that you want to remember "),
-        ("/recall", "read back what I asked you to remember"),
+        ("/start", "👋 welcome message"),
+        ("/help", "📖 show this list of commands"),
+        ("/reset", "🔄 clear our conversation history"),
+        ("/about", "ℹ️ who I am and what's under the hood"),
+        ("/predict", "🔮 predict a match result — /predict TeamA vs TeamB"),
+        ("/joke", "😂 tell jokes about football"),
+        ("/quote", "✨ share an inspiring football & life quote"),
+        ("/fact", "🤯 drop a surprising football fact"),
+        ("/compliment", "🥰 get a warm football-flavoured compliment"),
+        ("/roll", "🎲 roll a six-sided die"),
+        ("/roast", "🔥 get a short, playful roast"),
+        ("/remember", "📝 save something you want me to remember"),
+        ("/recall", "🧠 read back what I asked you to remember"),
     ]
     if HF_SPACE_ID:
-        cmds.append(("/model", "switch the AI provider powering me"))
+        cmds.append(("/model", "🤖 switch the AI provider powering me"))
     return cmds
 
 
@@ -212,8 +213,9 @@ def _dynamic_help(user_id: int, chat_id: int) -> str:
         "Write a short Telegram /help message in your own voice. "
         "List EXACTLY these commands with their exact names — do not add, "
         "remove, or rename any — but you may restyle the descriptions and add "
-        "a one-line intro and outro. Keep it concise and use a couple of "
-        "football emojis.\n\n" + command_block
+        "a one-line intro and outro. Keep a fitting emoji next to EVERY command "
+        "line (the list already has one each — keep or improve them). Keep it "
+        "concise and lively.\n\n" + command_block
     )
     try:
         reply = _ask_once(user_id, chat_id, prompt)
@@ -226,7 +228,7 @@ def _dynamic_help(user_id: int, chat_id: int) -> str:
 @bot.message_handler(commands=["reset"], func=is_allowed)
 def cmd_reset(message):
     clear_history(message.from_user.id)
-    bot.send_message(message.chat.id, "Conversation cleared. Starting fresh!")
+    bot.send_message(message.chat.id, "🔄 Conversation cleared. Starting fresh! ⚽")
 
 
 @bot.message_handler(commands=["about"], func=is_allowed)
