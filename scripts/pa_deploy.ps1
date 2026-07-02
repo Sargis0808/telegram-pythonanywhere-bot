@@ -295,8 +295,6 @@ Emit-IfSet 'ALLOWED_USERS'
 Emit-IfSet 'HF_SPACE_ID'
 Emit-IfSet 'HF_TOKEN'
 Emit-IfSet 'DEPLOY_SECRET'
-Emit-IfSet 'FOOTBALL_DATA_API_KEY'
-Emit-IfSet 'FOOTBALL_TZ_OFFSET'
 
 # Write with LF endings (PA is Linux) — never CRLF.
 $tmpEnv = Join-Path ([IO.Path]::GetTempPath()) ("pa_env_" + [Guid]::NewGuid().ToString('N') + ".tmp")

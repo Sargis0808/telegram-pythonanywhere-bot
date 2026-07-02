@@ -463,43 +463,6 @@ def test_cmd_roll_within_range():
             assert 1 <= value <= 6
 
 
-# ── /lastnews (today's matches) ──────────────────────────────────────────────
-
-
-def test_cmd_lastnews_sends_matches_when_configured():
-    """/lastnews fetches real match data and sends it when the key is set."""
-    with (
-        patch("bot.handlers.FOOTBALL_DATA_API_KEY", "fake-key"),
-        patch("bot.handlers.get_today_matches_text", return_value="Today's matches") as mock_fetch,
-        patch("bot.handlers.keep_typing") as mock_keep,
-        patch("bot.handlers.send_reply") as mock_send,
-        patch("bot.handlers.bot"),
-    ):
-        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
-        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
-        from bot.handlers import cmd_lastnews
-
-        msg = make_message(text="/lastnews", chat_id=456)
-        cmd_lastnews(msg)
-        mock_fetch.assert_called_once()
-        mock_keep.assert_called_once_with(456)
-        mock_send.assert_called_once_with(msg, "Today's matches")
-
-
-def test_cmd_lastnews_without_key_shows_setup_hint():
-    """With no API key, /lastnews must not hit the network and must hint setup."""
-    with (
-        patch("bot.handlers.FOOTBALL_DATA_API_KEY", ""),
-        patch("bot.handlers.get_today_matches_text") as mock_fetch,
-        patch("bot.handlers.bot") as mock_bot,
-    ):
-        from bot.handlers import cmd_lastnews
-
-        cmd_lastnews(make_message(text="/lastnews", chat_id=456))
-        mock_fetch.assert_not_called()
-        assert "FOOTBALL_DATA_API_KEY" in mock_bot.send_message.call_args[0][1]
-
-
 # ── /predict (football forecast) ─────────────────────────────────────────────
 
 

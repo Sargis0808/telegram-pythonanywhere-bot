@@ -2,17 +2,8 @@ import os
 import random
 from datetime import datetime
 from bot.clients import bot, BOT_INFO, store
-from bot.config import (
-    COMMIT_SHA,
-    FOOTBALL_DATA_API_KEY,
-    HF_SPACE_ID,
-    HOSTING_LABEL,
-    MODEL,
-    RATE_LIMIT,
-    SYSTEM_PROMPT,
-)
+from bot.config import COMMIT_SHA, HF_SPACE_ID, HOSTING_LABEL, MODEL, RATE_LIMIT, SYSTEM_PROMPT
 from bot.ai import ask_ai
-from bot.football_data import get_today_matches_text
 from bot.providers import generate
 from bot.helpers import is_allowed, keep_typing, send_reply, should_respond
 from bot.history import clear_history
@@ -133,24 +124,6 @@ def cmd_recall(message):
  bot.send_message(message.chat.id, f"You asked me to remember this:\n\n{note}")
 
 
-@bot.message_handler(commands=["lastnews"], func=is_allowed)
-def cmd_lastnews(message):
-    # REAL football data (today's fixtures, kickoff times, live status and
-    # scores) via football-data.org — never AI-invented. Degrades gracefully
-    # when the API key isn't configured. keep_typing keeps the indicator alive
-    # while we hit the external API.
-    if not FOOTBALL_DATA_API_KEY:
-        bot.send_message(
-            message.chat.id,
-            "⚽ Live match data isn't set up yet. The bot owner needs to add a free "
-            "FOOTBALL_DATA_API_KEY from football-data.org. 🔧",
-        )
-        return
-    with keep_typing(message.chat.id):
-        text = get_today_matches_text()
-    send_reply(message, text)
-
-
 @bot.message_handler(commands=["predict"], func=is_allowed)
 def cmd_predict(message):
     # Core football-predictor command: the user names a fixture and the AI
@@ -204,7 +177,6 @@ def _commands() -> list:
         ("/help", "show this list of commands"),
         ("/reset", "clear our conversation history"),
         ("/about", "who I am and what's under the hood"),
-        ("/lastnews", "today's football matches — kickoff times & live scores"),
         ("/predict", "predict a match result — /predict TeamA vs TeamB"),
         ("/joke" , "tell jokes about football"),
         ("/quote", "share an inspiring football quote ,and life"),
