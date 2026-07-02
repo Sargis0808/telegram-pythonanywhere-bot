@@ -133,14 +133,18 @@ def test_deploy_swallows_os_utime_failure():
 
 def test_deploy_rejects_concurrent_runs():
     """A second deploy while one is in-flight returns 409 instead of
-    racing git pull in the same worktree. Simulated by patching fcntl.flock
-    to raise BlockingIOError on non-blocking acquire."""
+    racing git pull in the same worktree. Simulated by patching the
+    lock helper to raise BlockingIOError on non-blocking acquire.
+
+    Patches api.index._lock_deploy_nb rather than fcntl.flock directly so
+    the test is cross-platform: fcntl doesn't exist on Windows, where the
+    helper is a no-op."""
     mock_request = MagicMock()
     mock_request.headers.get.return_value = "correct"
     with (
         patch("bot.config.DEPLOY_SECRET", "correct"),
         patch("api.index.request", mock_request),
-        patch("api.index.fcntl.flock", side_effect=BlockingIOError()),
+        patch("api.index._lock_deploy_nb", side_effect=BlockingIOError()),
     ):
         from api.index import deploy
 
