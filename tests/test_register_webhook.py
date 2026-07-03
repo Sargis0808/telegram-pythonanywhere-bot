@@ -50,17 +50,39 @@ def test_register_webhook_includes_secret_when_set():
 
 
 def test_register_webhook_does_not_raise_on_failure():
-    """Failures must never crash the worker — they're logged and swallowed."""
+    """Failures must never crash the worker — they're logged and swallowed
+    (after the retries are exhausted)."""
     with (
         patch("bot.config.WEBHOOK_URL", "https://example.com/api/webhook"),
         patch("bot.config.WEBHOOK_SECRET", ""),
         patch("bot.clients.bot") as mock_bot,
+        patch("bot.clients.time.sleep") as mock_sleep,
     ):
         mock_bot.set_webhook.side_effect = RuntimeError("Telegram down")
         from bot.clients import register_webhook
 
         msg = register_webhook()
         assert "fail" in msg.lower()
+        assert mock_bot.set_webhook.call_count == 3
+        assert mock_sleep.call_count == 2
+
+
+def test_register_webhook_retries_through_proxy_blip():
+    """PA's outbound proxy 503-blips transiently (seen live 2026-06-29:
+    a boot-time registration failed and the bot ran on stale webhook
+    state). One retry must ride it out and still report success."""
+    with (
+        patch("bot.config.WEBHOOK_URL", "https://example.com/api/webhook"),
+        patch("bot.config.WEBHOOK_SECRET", ""),
+        patch("bot.clients.bot") as mock_bot,
+        patch("bot.clients.time.sleep"),
+    ):
+        mock_bot.set_webhook.side_effect = [RuntimeError("proxy 503"), True]
+        from bot.clients import register_webhook
+
+        msg = register_webhook()
+        assert "registered" in msg.lower()
+        assert mock_bot.set_webhook.call_count == 2
 
 
 def test_register_webhook_rejects_http_scheme():

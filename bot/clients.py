@@ -113,18 +113,29 @@ def register_webhook() -> str:
     if not parsed.path:
         return f"WEBHOOK_URL has no path; Telegram needs a real endpoint — skipping ({WEBHOOK_URL!r})"
 
-    try:
-        # max_connections=1 serializes Telegram deliveries to the worker.
-        # bot/history.py + bot/preferences.py do read-modify-write against
-        # the SQLite store; without this, two quick messages from the same
-        # user can interleave and lose a turn. PA's single-worker free tier
-        # makes this cheap — at most one update in flight at a time anyway.
-        kwargs = {"url": WEBHOOK_URL, "max_connections": 1}
-        if WEBHOOK_SECRET:
-            kwargs["secret_token"] = WEBHOOK_SECRET
-        result = bot.set_webhook(**kwargs)
-    except Exception as e:
-        return f"Webhook registration failed: {e}"
+    # max_connections=1 serializes Telegram deliveries to the worker.
+    # bot/history.py + bot/preferences.py do read-modify-write against
+    # the SQLite store; without this, two quick messages from the same
+    # user can interleave and lose a turn. PA's single-worker free tier
+    # makes this cheap — at most one update in flight at a time anyway.
+    kwargs = {"url": WEBHOOK_URL, "max_connections": 1}
+    if WEBHOOK_SECRET:
+        kwargs["secret_token"] = WEBHOOK_SECRET
+
+    # PA's outbound proxy 503-blips several times a day; a couple of
+    # retries ride it out. Seen live (2026-06-29): a boot-time
+    # registration failed on a blip and the bot ran on whatever webhook
+    # state Telegram already had until the next deploy re-asserted it.
+    result = None
+    for attempt in range(3):
+        try:
+            result = bot.set_webhook(**kwargs)
+            break
+        except Exception as e:
+            if attempt == 2:
+                return f"Webhook registration failed: {e}"
+            print(f"set_webhook attempt {attempt + 1}/3 failed, retrying: {e}")
+            time.sleep(1 + attempt)
 
     # pyTelegramBotAPI returns True on success, False otherwise. Surface
     # the difference so caller logs are honest.

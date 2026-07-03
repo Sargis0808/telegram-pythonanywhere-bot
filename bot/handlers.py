@@ -178,6 +178,7 @@ def _commands() -> list:
         ("/help", "📖 show this list of commands"),
         ("/reset", "🔄 clear our conversation history"),
         ("/about", "ℹ️ who I am and what's under the hood"),
+        ("/sha", "🔖 show the live commit SHA"),
         ("/predict", "🔮 predict a match result — /predict TeamA vs TeamB"),
         ("/joke", "😂 tell jokes about football"),
         ("/quote", "✨ share an inspiring football & life quote"),
@@ -282,6 +283,12 @@ def _dynamic_intro(user_id: int, chat_id: int) -> str:
     except Exception as e:
         print(f"/about dynamic intro failed: {e} — using fallback", flush=True)
         return _FALLBACK_INTRO
+
+
+@bot.message_handler(commands=["sha"], func=is_allowed)
+def cmd_sha(message):
+    sha = COMMIT_SHA or "unknown"
+    bot.send_message(message.chat.id, f"Live SHA: {sha}")
 
 
 if HF_SPACE_ID:

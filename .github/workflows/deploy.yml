@@ -1,8 +1,12 @@
 name: Deploy to PythonAnywhere
 
 # Triggers the bot's /api/deploy endpoint on every push to main, which
-# runs `git pull` on PA and reloads the worker. Requires two GitHub
-# repo secrets:
+# fetches + hard-resets the checkout on PA to origin's tip, reinstalls
+# dependencies if requirements.txt changed, and reloads the worker.
+# A second step then polls /api/health until the pushed commit's SHA is
+# actually being served — so "green run" means "the bot is running this
+# commit", not just "the server said OK". Requires two GitHub repo
+# secrets:
 #
 #   PA_DEPLOY_URL    e.g. https://<your-pa-username>.pythonanywhere.com/api/deploy
 #   DEPLOY_SECRET    must match the DEPLOY_SECRET in PA's .env
@@ -14,11 +18,12 @@ on:
     branches: [main]
   workflow_dispatch:  # also allow manual triggers from the Actions tab
 
-# Serialize deploys so a rapid sequence of pushes can't race git pull
-# on PA. New runs cancel any in-flight run; the last commit wins.
+# Serialize deploys so a rapid sequence of pushes can't race on PA. New
+# pushes cancel any in-flight run; the last commit wins — safe because
+# the server always converges to origin's current tip anyway.
 concurrency:
   group: pa-deploy
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -37,7 +42,37 @@ jobs:
             echo "::warning::PA_DEPLOY_URL or DEPLOY_SECRET not set in repo secrets; skipping deploy."
             exit 0
           fi
+          # --retry rides out PythonAnywhere's transient outbound-proxy
+          # blips (which surface as a 500 from /api/deploy). Retrying is
+          # safe: the endpoint is idempotent — every run converges the
+          # checkout to origin's tip.
           curl -fsS -X POST \
             -H "X-Deploy-Secret: $DEPLOY_SECRET" \
-            --max-time 60 \
+            --max-time 240 \
+            --retry 2 --retry-delay 10 --retry-all-errors \
             "$PA_DEPLOY_URL"
+
+      - name: Verify the new code is live
+        env:
+          PA_DEPLOY_URL: ${{ secrets.PA_DEPLOY_URL }}
+        run: |
+          if [ -z "$PA_DEPLOY_URL" ]; then
+            exit 0  # secrets not configured; step 1 already warned
+          fi
+          # /api/health reports the SHA the worker is RUNNING (captured
+          # at boot), so this catches every "deployed but never
+          # restarted" failure mode, not just transport errors. The
+          # worker reload takes ~10s after the touch.
+          base="${PA_DEPLOY_URL%/}"; base="${base%/api/deploy}"
+          want="OK ${GITHUB_SHA:0:7}"
+          body=""
+          for i in $(seq 1 12); do
+            body="$(curl -sS --max-time 15 "$base/api/health" || true)"
+            case "$body" in
+              "$want"*) echo "Live: $body"; exit 0 ;;
+            esac
+            echo "  not live yet (attempt $i/12): got '$body'"
+            sleep 5
+          done
+          echo "::error::Deploy did not go live: health reports '$body', expected '$want'"
+          exit 1

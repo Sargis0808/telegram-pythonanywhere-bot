@@ -6,6 +6,8 @@ A minimal Python Telegram bot running on PythonAnywhere (free tier) with persist
 
 **All services used are free. No credit card required.**
 
+Deployment smoke test: 2026-07-02.
+
 > **Live demo:** <a href="https://t.me/tele_pythonanywhere_bot" target="_blank"><img src="https://img.shields.io/badge/Chat%20on-Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" alt="Chat on Telegram"/></a>
 
 ---
@@ -234,7 +236,7 @@ from pythonanywhere_wsgi import application  # noqa: F401
 
 Substitute your actual PA username on the `project_home` line. Save the file, then go back to the Web tab and click the green **Reload** button.
 
-Test that the worker booted by visiting `https://<your-pa-username>.pythonanywhere.com/api/health` in a browser — it should return `OK`.
+Test that the worker booted by visiting `https://<your-pa-username>.pythonanywhere.com/api/health` in a browser — it should return `OK` followed by the short commit ID the bot is running (e.g. `OK 4ea0ce2`). That commit ID is how you can always tell exactly which version of your code is live.
 
 ---
 
@@ -264,13 +266,13 @@ PA free-tier web apps must be renewed every month by clicking a button in the da
 2. Find the "Run until N days from today" button near the top
 3. Click it — your bot gets another month
 
-If you ever need to update the bot after pushing new code to GitHub, run this in a PA Bash console:
+If you ever need to update the bot by hand after pushing new code to GitHub, run this in a PA Bash console:
 
 ```bash
-cd ~/telegram-pythonanywhere-bot && git pull && touch /var/www/<your-pa-username>_pythonanywhere_com_wsgi.py
+cd ~/telegram-pythonanywhere-bot && git fetch origin && git reset --hard origin/main && touch /var/www/<your-pa-username>_pythonanywhere_com_wsgi.py
 ```
 
-(The `touch` forces PA to reload the worker without needing to click Reload in the dashboard.)
+This is the same convergence the auto-deploy endpoint performs: it puts the checkout exactly at your latest pushed commit (discarding any local edits to tracked files — a plain `git pull` would refuse and get stuck instead), and the `touch` forces PA to reload the worker without needing to click Reload in the dashboard.
 
 ---
 
@@ -299,11 +301,16 @@ DEPLOY_SECRET=<the secret you just generated>
 | `DEPLOY_SECRET` | the same value you put in PA's `.env` |
 | `PA_DEPLOY_URL` | `https://<your-pa-username>.pythonanywhere.com/api/deploy` |
 
-5. Push any change to `main`. The `Deploy to PythonAnywhere` GitHub Action triggers automatically, hits `/api/deploy` with the secret header, and PA pulls the new commit and reloads. End-to-end takes ~3 seconds.
+5. Push any change to `main`. The `Deploy to PythonAnywhere` GitHub Action triggers automatically, hits `/api/deploy` with the secret header, and PA syncs the checkout to your pushed commit and reloads the worker. The workflow then polls `/api/health` until it reports your new commit's ID — so a green run means *your code is actually live*, not just "the server answered". End-to-end takes ~30 seconds.
 
 You can also trigger a deploy manually from GitHub: **Actions** tab → **Deploy to PythonAnywhere** → **Run workflow**.
 
 If the secrets aren't set, the workflow skips with a warning instead of failing — so this is fully optional, the rest of the repo keeps working without it.
+
+Two things worth knowing about how deploys work:
+
+- **GitHub is the source of truth.** Each deploy runs `git fetch` + `git reset --hard` on PA, so the server always ends up exactly at the pushed commit — even after force-pushes, rebases, or if a file on PA was edited by hand. The flip side: don't edit the bot's *code* files directly on PA (via the Files tab or a console) and expect the edits to survive — the next deploy overwrites them. Your `.env`, `.webhook_secret`, and database are untracked files and always survive deploys.
+- **If you change `requirements.txt`,** the deploy installs the new dependencies into the virtualenv automatically before reloading.
 
 ---
 
@@ -441,6 +448,7 @@ make deploy-pa  # one-command PythonAnywhere deploy (see "Fast path" in Part 2)
 | `/help` | List all commands |
 | `/reset` | Clear your conversation history |
 | `/about` | Show model, storage, and hosting info |
+| `/sha` | Show the live git commit SHA |
 | `/model` | Switch AI provider (only available when `HF_SPACE_ID` is set) |
 
 ---

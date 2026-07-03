@@ -1,6 +1,19 @@
 from unittest.mock import MagicMock, patch
 
 
+def test_health_reports_commit_sha():
+    """/api/health returns "OK" or "OK <sha>". The SHA is captured at
+    import time, so it identifies the code the worker is actually
+    running — the deploy workflow polls it to verify a push went live."""
+    import re
+
+    from api.index import health
+
+    body, status = health()
+    assert status == 200
+    assert re.fullmatch(r"OK( [0-9a-f]{7,40})?", body)
+
+
 def test_webhook_rejects_bad_secret():
     mock_request = MagicMock()
     mock_request.headers.get.return_value = "wrong_secret"
