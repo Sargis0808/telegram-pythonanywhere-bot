@@ -92,6 +92,7 @@ telegram-pythonanywhere-bot/
 | `HOSTING_LABEL` | No | `PythonAnywhere` | Label shown by the `/about` command |
 | `DEPLOY_SECRET` | No | — | Enables `/api/deploy` auto-deploy webhook. Fail-closed: when unset, the endpoint returns 403. Generate with `openssl rand -hex 32` and set the same value as a GitHub repo secret named `DEPLOY_SECRET` so the workflow at `.github/workflows/deploy.yml` can call the endpoint |
 | `PA_WSGI_PATH` | No | _auto-detected_ | Absolute path of the PA WSGI file `/api/deploy` touches to reload the worker. Only needed when auto-detection fails (non-default PA layout / custom domain) — the deploy response says so explicitly when that happens |
+| `GNEWS_API_KEY` | No | — | Free API token from [gnews.io](https://gnews.io). Enables the `/footballnews` command (latest real football headlines via `bot/football_news.py`). When unset, `/footballnews` replies with a "not set up yet" hint. `gnews.io` is on PA's outbound whitelist |
 
 All env vars are read in `bot/config.py`. `.strip()` is called on every value to defend against trailing newlines / whitespace from copy-paste.
 

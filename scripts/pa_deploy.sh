@@ -284,6 +284,7 @@ emit_if_set ALLOWED_USERS
 emit_if_set HF_SPACE_ID
 emit_if_set HF_TOKEN
 emit_if_set DEPLOY_SECRET
+emit_if_set GNEWS_API_KEY
 
 echo "==> Uploading .env to $PROJECT_DIR/.env ..."
 upload_status=$(curl -sS -o /dev/null -w "%{http_code}" -X POST -H "$AUTH_HEADER" \

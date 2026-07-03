@@ -520,6 +520,73 @@ def test_cmd_predict_without_match_shows_usage():
         assert "/predict" in mock_bot.send_message.call_args[0][1]
 
 
+# ── /footballnews (real API via GNews) ───────────────────────────────────────
+
+
+def test_cmd_footballnews_configured_fetches_and_sends():
+    """With a key set, /footballnews fetches real news and sends it via send_reply."""
+    with (
+        patch("bot.handlers.GNEWS_API_KEY", "key"),
+        patch("bot.handlers.get_football_news_text", return_value="NEWS") as mock_get,
+        patch("bot.handlers.keep_typing"),
+        patch("bot.handlers.send_reply") as mock_send,
+        patch("bot.handlers.bot"),
+    ):
+        from bot.handlers import cmd_footballnews
+
+        msg = make_message(chat_id=456)
+        cmd_footballnews(msg)
+        mock_get.assert_called_once()
+        mock_send.assert_called_once_with(msg, "NEWS")
+
+
+def test_cmd_footballnews_no_key_shows_setup_message():
+    """Without a key, /footballnews explains the setup and never hits the API."""
+    with (
+        patch("bot.handlers.GNEWS_API_KEY", ""),
+        patch("bot.handlers.get_football_news_text") as mock_get,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_footballnews
+
+        cmd_footballnews(make_message(chat_id=456))
+        mock_get.assert_not_called()
+        assert "GNEWS_API_KEY" in mock_bot.send_message.call_args[0][1]
+
+
+# ── /footballplayer (AI profile) ─────────────────────────────────────────────
+
+
+def test_cmd_footballplayer_with_name_calls_ai():
+    """/footballplayer <name> runs a stateless AI profile and sends the reply."""
+    with (
+        patch("bot.handlers._ask_once", return_value="Profile") as mock_ask,
+        patch("bot.handlers.send_reply") as mock_send,
+        patch("bot.handlers.bot"),
+    ):
+        from bot.handlers import cmd_footballplayer
+
+        msg = make_message(text="/footballplayer Lionel Messi", user_id=123, chat_id=456)
+        cmd_footballplayer(msg)
+        assert mock_ask.call_args[0][0] == 123
+        assert mock_ask.call_args[0][1] == 456
+        assert "Lionel Messi" in mock_ask.call_args[0][2]
+        mock_send.assert_called_once_with(msg, "Profile")
+
+
+def test_cmd_footballplayer_without_name_shows_usage():
+    """/footballplayer with no name prompts for usage and never hits the AI."""
+    with (
+        patch("bot.handlers._ask_once") as mock_ask,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_footballplayer
+
+        cmd_footballplayer(make_message(text="/footballplayer", chat_id=456))
+        mock_ask.assert_not_called()
+        assert "/footballplayer" in mock_bot.send_message.call_args[0][1]
+
+
 def test_handle_message_uses_keep_typing():
     """handle_message should wrap ask_ai in the keep_typing context."""
     with (

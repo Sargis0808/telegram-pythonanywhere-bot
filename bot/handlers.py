@@ -3,8 +3,17 @@ import os
 import random
 from datetime import datetime
 from bot.clients import bot, BOT_INFO, store
-from bot.config import COMMIT_SHA, HF_SPACE_ID, HOSTING_LABEL, MODEL, RATE_LIMIT, SYSTEM_PROMPT
+from bot.config import (
+    COMMIT_SHA,
+    GNEWS_API_KEY,
+    HF_SPACE_ID,
+    HOSTING_LABEL,
+    MODEL,
+    RATE_LIMIT,
+    SYSTEM_PROMPT,
+)
 from bot.ai import ask_ai
+from bot.football_news import get_football_news_text
 from bot.providers import generate
 from bot.helpers import is_allowed, keep_typing, send_reply, should_respond
 from bot.history import clear_history
@@ -176,6 +185,47 @@ def _format_notes(notes: list) -> str:
     return "\n".join(f"{i}. {note}" for i, note in enumerate(notes, 1))
 
 
+@bot.message_handler(commands=["footballnews"], func=is_allowed)
+def cmd_footballnews(message):
+    # REAL, current football headlines via GNews (gnews.io) — never
+    # AI-invented, since the model has a training cutoff. Degrades gracefully
+    # when the API key isn't configured. keep_typing keeps the indicator alive
+    # while we hit the external API.
+    if not GNEWS_API_KEY:
+        bot.send_message(
+            message.chat.id,
+            "📰 Football news isn't set up yet. The bot owner needs to add a free "
+            "GNEWS_API_KEY from gnews.io. 🔧",
+        )
+        return
+    with keep_typing(message.chat.id):
+        text = get_football_news_text()
+    send_reply(message, text)
+
+
+@bot.message_handler(commands=["footballplayer"], func=is_allowed)
+def cmd_footballplayer(message):
+    # Player profile from the AI (position, clubs, honours, style). Uses the
+    # stateless _ask_once (like /predict) so it doesn't pollute conversation
+    # memory, and keeps the typing indicator alive. Current-club info comes
+    # from the model's knowledge and may lag slightly.
+    name = message.text.split(maxsplit=1)[1].strip() if " " in message.text else ""
+    if not name:
+        bot.send_message(
+            message.chat.id,
+            "⚽ Tell me which player, e.g.\n/footballplayer Lionel Messi",
+        )
+        return
+    prompt = (
+        f"Give a concise career profile of the football (soccer) player {name}. "
+        "Cover: main position, current club and notable former clubs, key honours "
+        "and records, and playing style. Use short sections or bullet points. If "
+        "you're not sure the player exists, say so briefly instead of inventing details."
+    )
+    reply = _ask_once(message.from_user.id, message.chat.id, prompt)
+    send_reply(message, reply)
+
+
 @bot.message_handler(commands=["predict"], func=is_allowed)
 def cmd_predict(message):
     # Core football-predictor command: the user names a fixture and the AI
@@ -232,6 +282,8 @@ def _commands() -> list:
         ("/about", "ℹ️ who I am and what's under the hood"),
         ("/sha", "🔖 show the live commit SHA"),
         ("/predict", "🔮 predict a match result — /predict TeamA vs TeamB"),
+        ("/footballnews", "📰 latest football news"),
+        ("/footballplayer", "👤 player profile — /footballplayer Lionel Messi"),
         ("/joke", "😂 tell jokes about football"),
         ("/quote", "✨ share an inspiring football & life quote"),
         ("/fact", "🤯 drop a surprising football fact"),

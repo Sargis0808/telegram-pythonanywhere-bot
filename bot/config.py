@@ -105,6 +105,11 @@ HOSTING_LABEL = os.environ.get("HOSTING_LABEL", "PythonAnywhere").strip()
 # endpoint is fail-closed.
 DEPLOY_SECRET = os.environ.get("DEPLOY_SECRET", "").strip()
 
+# football news — powers the /footballnews command. Free API key from
+# https://gnews.io. When unset, /footballnews replies with a "not set up
+# yet" hint (never crashes). gnews.io is on PA's outbound whitelist.
+GNEWS_API_KEY = os.environ.get("GNEWS_API_KEY", "").strip()
+
 # App
 SYSTEM_PROMPT = (
     "You are ⚽ FootyOracle, an expert football (soccer) analyst who knows the sport "
