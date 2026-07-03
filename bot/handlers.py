@@ -1,3 +1,4 @@
+import json
 import os
 import random
 from datetime import datetime
@@ -69,7 +70,7 @@ def cmd_joke(message):
 def cmd_quote(message):
     reply = ask_ai(
         message.from_user.id,
-        "Share one short, inspiring football quote. Attribute it if you can.",
+        "Share one short, inspiring football motivation quote. Attribute it if you can.",
     )
     bot.send_message(message.chat.id, reply)
 
@@ -111,18 +112,68 @@ def cmd_roast(message):
 
 @bot.message_handler(commands=["remember"], func=is_allowed)
 def cmd_remember(message):
- note = message.text.split(maxsplit=1)[1] if " " in message.text else ""
- store.set(f"note:{message.from_user.id}", note)
- bot.send_message(message.chat.id, "📝 Saved carefully! ✅")
+    # Accumulate every note the user saves (append, don't overwrite) and echo
+    # back the full list so they always see everything I'm remembering.
+    note = message.text.split(maxsplit=1)[1].strip() if " " in message.text else ""
+    if not note:
+        bot.send_message(
+            message.chat.id,
+            "📝 Tell me what to remember, e.g.\n/remember Buy tickets for the derby",
+        )
+        return
+    if store is None:
+        bot.send_message(
+            message.chat.id,
+            "🤔 I can't save notes right now — no memory is configured.",
+        )
+        return
+    notes = _load_notes(message.from_user.id)
+    notes.append(note)
+    store.set(f"note:{message.from_user.id}", json.dumps(notes))
+    bot.send_message(
+        message.chat.id,
+        "📝 Saved! ✅ Here's everything I'm remembering now:\n\n" + _format_notes(notes),
+    )
+
 
 @bot.message_handler(commands=["recall"], func=is_allowed)
 def cmd_recall(message):
- # Mirror image of /remember — reads the stored note back.
- note = store.get(f"note:{message.from_user.id}") if store is not None else None
- if not note:
-  bot.send_message(message.chat.id, "🤔 I don't have anything saved yet. Use /remember <text> first. 📝")
-  return
- bot.send_message(message.chat.id, f"🧠 You asked me to remember this:\n\n{note}")
+    # Mirror image of /remember — reads every stored note back.
+    notes = _load_notes(message.from_user.id)
+    if not notes:
+        bot.send_message(
+            message.chat.id,
+            "🤔 I don't have anything saved yet. Use /remember <text> first. 📝",
+        )
+        return
+    bot.send_message(
+        message.chat.id,
+        "🧠 Here's everything you asked me to remember:\n\n" + _format_notes(notes),
+    )
+
+
+def _load_notes(user_id: int) -> list:
+    """Return the user's remembered notes as a list, oldest first.
+
+    Notes are stored as a JSON array under note:{user_id}. A legacy value
+    from the old single-note format (a bare string) is treated as one note
+    so nothing saved before this change is lost.
+    """
+    if store is None:
+        return []
+    raw = store.get(f"note:{user_id}")
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return [raw]  # legacy single-note value saved before list support
+    return [str(n) for n in data] if isinstance(data, list) else [str(data)]
+
+
+def _format_notes(notes: list) -> str:
+    """Render notes as a human-friendly numbered list."""
+    return "\n".join(f"{i}. {note}" for i, note in enumerate(notes, 1))
 
 
 @bot.message_handler(commands=["predict"], func=is_allowed)
@@ -147,6 +198,7 @@ def cmd_predict(message):
         "• 2-3 short reasons (recent form, key players, head-to-head)\n"
         "• A confidence level: low / medium / high\n"
         "Do not add any disclaimer or note about betting or it being an AI estimate."
+        
     )
     reply = _ask_once(message.from_user.id, message.chat.id, prompt)
     bot.send_message(message.chat.id, reply)
@@ -186,8 +238,8 @@ def _commands() -> list:
         ("/compliment", "🥰 get a warm football-flavoured compliment"),
         ("/roll", "🎲 roll a six-sided die"),
         ("/roast", "🔥 get a short, playful roast"),
-        ("/remember", "📝 save something you want me to remember"),
-        ("/recall", "🧠 read back what I asked you to remember"),
+        ("/remember", "📝 add a note — I remember them all"),
+        ("/recall", "🧠 read back everything I've remembered"),
     ]
     if HF_SPACE_ID:
         cmds.append(("/model", "🤖 switch the AI provider powering me"))

@@ -538,3 +538,85 @@ def test_handle_message_uses_keep_typing():
         msg = make_message()
         handle_message(msg)
         mock_keep.assert_called_once_with(456)
+
+
+# ── /remember + /recall (persistent notes) ───────────────────────────────────
+
+
+def _fake_store():
+    """A MagicMock store backed by a real dict so get/set round-trip."""
+    data = {}
+    store = MagicMock()
+    store.get.side_effect = lambda k: data.get(k)
+    store.set.side_effect = lambda k, v, *a, **kw: data.__setitem__(k, v)
+    store._data = data
+    return store
+
+
+def test_cmd_remember_accumulates_and_shows_all():
+    """/remember keeps every note and echoes the full list, not just the last."""
+    store = _fake_store()
+    with patch("bot.handlers.store", store), patch("bot.handlers.bot") as mock_bot:
+        from bot.handlers import cmd_remember
+
+        cmd_remember(make_message(text="/remember first", user_id=1, chat_id=9))
+        cmd_remember(make_message(text="/remember second", user_id=1, chat_id=9))
+        sent = mock_bot.send_message.call_args[0][1]
+        assert "1. first" in sent
+        assert "2. second" in sent
+    # Both notes survived in storage (the old code overwrote and kept only one).
+    assert "first" in store._data["note:1"]
+    assert "second" in store._data["note:1"]
+
+
+def test_cmd_recall_shows_all_notes():
+    """/recall reads back the whole list, not just the most recent note."""
+    store = _fake_store()
+    store._data["note:1"] = '["a", "b", "c"]'
+    with patch("bot.handlers.store", store), patch("bot.handlers.bot") as mock_bot:
+        from bot.handlers import cmd_recall
+
+        cmd_recall(make_message(user_id=1, chat_id=9))
+        sent = mock_bot.send_message.call_args[0][1]
+        assert "1. a" in sent and "2. b" in sent and "3. c" in sent
+
+
+def test_cmd_recall_reads_legacy_single_note():
+    """A note saved in the old bare-string format is still recalled."""
+    store = _fake_store()
+    store._data["note:1"] = "old plain note"  # pre-JSON-list format
+    with patch("bot.handlers.store", store), patch("bot.handlers.bot") as mock_bot:
+        from bot.handlers import cmd_recall
+
+        cmd_recall(make_message(user_id=1, chat_id=9))
+        assert "old plain note" in mock_bot.send_message.call_args[0][1]
+
+
+def test_cmd_recall_empty():
+    """With nothing saved, /recall prompts the user to add something."""
+    store = _fake_store()
+    with patch("bot.handlers.store", store), patch("bot.handlers.bot") as mock_bot:
+        from bot.handlers import cmd_recall
+
+        cmd_recall(make_message(user_id=1, chat_id=9))
+        assert "don't have anything saved" in mock_bot.send_message.call_args[0][1]
+
+
+def test_cmd_remember_requires_text():
+    """/remember with no text prompts for usage and never writes to the store."""
+    store = _fake_store()
+    with patch("bot.handlers.store", store), patch("bot.handlers.bot") as mock_bot:
+        from bot.handlers import cmd_remember
+
+        cmd_remember(make_message(text="/remember", chat_id=9))
+        store.set.assert_not_called()
+        assert "Tell me what to remember" in mock_bot.send_message.call_args[0][1]
+
+
+def test_cmd_remember_stateless_mode_does_not_crash():
+    """With no store configured, /remember replies gracefully instead of raising."""
+    with patch("bot.handlers.store", None), patch("bot.handlers.bot") as mock_bot:
+        from bot.handlers import cmd_remember
+
+        cmd_remember(make_message(text="/remember hello", chat_id=9))
+        mock_bot.send_message.assert_called_once()
