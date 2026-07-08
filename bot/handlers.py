@@ -251,7 +251,22 @@ def cmd_predict(message):
         
     )
     reply = _ask_once(message.from_user.id, message.chat.id, prompt)
+    reply = f"{reply}\n\n{random.choice(_PREDICT_FOLLOWUPS)}"
     bot.send_message(message.chat.id, reply)
+
+
+# Random engaging follow-up lines appended after a match prediction, to spark
+# a conversation with the user (Armenian). One is picked at random each time.
+_PREDICT_FOLLOWUPS = [
+    "🤔 Իսկ դու ի՞նչ կարծիքի ես, ո՞վ կհաղթի։",
+    "⚽ Դու ո՞ր թիմին ես բալատրում այս խաղում։",
+    "🔮 Համաձա՞յն ես իմ կանխատեսման հետ, թե՞ ուրիշ կարծիք ունես։",
+    "💬 Ի՞նչ հաշիվ ես սպասում այս հանդիպումից։",
+    "🏆 Ըստ քեզ՝ ո՞ր խաղացողը կդառնա հանդիպման հերոսը։",
+    "🔥 Կխաղա՞ս ինձ հետ՝ ո՞վ ավելի ճիշտ կկանխատեսի։",
+    "😎 Դու վստա՞հ ես քո ֆավորիտի հաղթանակին։",
+    "📊 Ի՞նչ ես կարծում՝ ո՞ր թիմն ունի ավելի լավ ֆորմա հիմա։",
+]
 
 
 def _ask_once(user_id: int, chat_id: int, user_prompt: str) -> str:
