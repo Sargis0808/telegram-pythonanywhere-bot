@@ -2,6 +2,7 @@ import re
 import time
 from bot.clients import ai
 from bot.config import (
+    AI_MAX_TOKENS,
     AI_REQUEST_TIMEOUT,
     AI_RETRIES,
     HF_REQUEST_TIMEOUT,
@@ -37,6 +38,7 @@ def _call_main(messages: list, retries: int = AI_RETRIES):
                 model=MODEL,
                 messages=messages,
                 timeout=timeout,
+                max_tokens=AI_MAX_TOKENS,
             )
             return response.choices[0].message.content
         except Exception as e:
