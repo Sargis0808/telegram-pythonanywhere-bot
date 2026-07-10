@@ -20,6 +20,47 @@ HF_TEMPERATURE = 0.6
 HF_TOP_K = 30
 
 
+# Which parameter name the active model accepts for the output-length cap.
+# OpenAI's GPT-5 / reasoning models reject `max_tokens` and require
+# `max_completion_tokens`; Cerebras and most other OpenAI-compatible endpoints
+# use `max_tokens`. We probe on the first call and cache the winner so every
+# later call skips the wasted attempt. None = not probed yet.
+_token_param = None
+
+
+def _create_completion(messages: list, timeout: float) -> str:
+    """Create a chat completion, adapting the output-length parameter name.
+
+    Tries `max_tokens` first (Cerebras/most providers), then falls back to
+    `max_completion_tokens` (OpenAI GPT-5 family) if the provider rejects it
+    with an `unsupported_parameter` error. The working name is cached in the
+    module-level `_token_param` so subsequent calls go straight to it.
+    """
+    global _token_param
+    candidates = [_token_param] if _token_param else ["max_tokens", "max_completion_tokens"]
+    last_err = None
+    for name in candidates:
+        try:
+            response = ai.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                timeout=timeout,
+                **{name: AI_MAX_TOKENS},
+            )
+            _token_param = name  # remember what this provider accepts
+            return response.choices[0].message.content
+        except Exception as e:
+            # Only swap the parameter name on the specific "unsupported
+            # parameter" signal. Anything else (network, auth, rate limit) must
+            # bubble up to the retry loop unchanged.
+            msg = str(e)
+            if "max_completion_tokens" in msg or "unsupported_parameter" in msg:
+                last_err = e
+                continue
+            raise
+    raise last_err
+
+
 def _call_main(messages: list, retries: int = AI_RETRIES):
     """Call the OpenAI-compatible API with bounded retries.
 
@@ -34,13 +75,7 @@ def _call_main(messages: list, retries: int = AI_RETRIES):
             raise TimeoutError("AI provider deadline exceeded")
         timeout = min(AI_REQUEST_TIMEOUT, remaining)
         try:
-            response = ai.chat.completions.create(
-                model=MODEL,
-                messages=messages,
-                timeout=timeout,
-                max_tokens=AI_MAX_TOKENS,
-            )
-            return response.choices[0].message.content
+            return _create_completion(messages, timeout)
         except Exception as e:
             if attempt == retries - 1:
                 raise
