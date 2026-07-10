@@ -147,9 +147,13 @@ MAX_MSG_LEN = 4096  # Telegram's character limit per message
 AI_REQUEST_TIMEOUT = 25  # seconds, applied per-attempt to OpenAI-compatible calls
 AI_RETRIES = 2  # total attempts (not extra retries) — 2 means one retry on failure
 # Cap the reply length. Fewer output tokens = faster replies (generation time
-# scales with tokens produced). 600 is plenty for a chat/prediction answer and
-# keeps responses snappy. Override via env if you want longer answers.
-AI_MAX_TOKENS = int(os.environ.get("AI_MAX_TOKENS", "600"))
+# scales with tokens produced). IMPORTANT: for OpenAI reasoning models (the
+# GPT-5 family) this budget is shared between the model's internal reasoning
+# and its visible answer. Too low and reasoning consumes the whole budget,
+# leaving an EMPTY reply (finish_reason="length") — which Telegram then rejects
+# as "message text is empty". 2000 leaves ample room for reasoning + a full
+# chat/prediction answer. Override via env for longer answers or to trim cost.
+AI_MAX_TOKENS = int(os.environ.get("AI_MAX_TOKENS", "2000"))
 # HF Gradio request timeout. Without this a hung `predict()` would occupy the
 # PA worker indefinitely; combined with the dedupe pre-claim, Telegram's
 # retries get silently dropped for ~10 min. Tuned to give ArmGPT enough

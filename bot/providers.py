@@ -48,7 +48,10 @@ def _create_completion(messages: list, timeout: float) -> str:
                 **{name: AI_MAX_TOKENS},
             )
             _token_param = name  # remember what this provider accepts
-            return response.choices[0].message.content
+            # content can be None (e.g. a reasoning model that spent its whole
+            # token budget on reasoning and produced no visible text). Coerce to
+            # "" so callers get a consistent str; generate() supplies a fallback.
+            return response.choices[0].message.content or ""
         except Exception as e:
             # Only swap the parameter name on the specific "unsupported
             # parameter" signal. Anything else (network, auth, rate limit) must
@@ -137,9 +140,21 @@ def _call_hf(messages: list) -> str:
     return text or "(empty response from ArmGPT)"
 
 
+# Shown when the provider returns an empty reply (e.g. a reasoning model that
+# used its entire token budget on reasoning). Guarantees callers never pass an
+# empty string to Telegram, which rejects it with "message text is empty".
+_EMPTY_REPLY_FALLBACK = "🤔 Չհասցրի պատասխանը ձևակերպել։ Փորձիր նորից կամ մի քիչ այլ ձևակերպիր հարցդ։"
+
+
 def generate(user_id: int, messages: list) -> str:
-    """Dispatch to the user's chosen AI provider and return a reply string."""
+    """Dispatch to the user's chosen AI provider and return a reply string.
+
+    Always returns a non-empty string: an empty provider reply is replaced with
+    a friendly fallback so no handler can hand Telegram an empty message.
+    """
     provider = get_provider(user_id)
     if provider == "hf":
-        return _call_hf(messages)
-    return _call_main(messages)
+        reply = _call_hf(messages)
+    else:
+        reply = _call_main(messages)
+    return (reply or "").strip() or _EMPTY_REPLY_FALLBACK
